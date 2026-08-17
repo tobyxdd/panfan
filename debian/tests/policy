@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+
+/usr/sbin/panfan --version
+/usr/sbin/panfan policy

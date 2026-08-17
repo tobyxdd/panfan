@@ -65,7 +65,34 @@ system-sleep symlink. Suspend preserves passive mode and the last fan request;
 resume verifies and restores passive ownership. Other sleep operations use the
 firmware-active fail-safe while asleep.
 
-## Install
+## Packages
+
+CI builds packages for Debian 13 (`amd64`) and Fedora 44 (`x86_64`). Packages
+install the daemon, systemd unit, sleep hook, modules-load configuration, and
+documentation, but deliberately do not enable the daemon or disable thermald.
+
+Debian provides `acpi-call-dkms` in its standard repositories:
+
+```sh
+sudo apt install ./panfan_0.1.0-1_amd64.deb
+```
+
+On Fedora, install `acpi_call-dkms` from a trusted external repository before
+installing the RPM because it is not part of the standard Fedora repositories:
+
+```sh
+sudo dnf install ./panfan-0.1.0-1.fc44.x86_64.rpm
+```
+
+**After installation, hand control over explicitly:**
+
+```sh
+sudo systemctl mask --now thermald.service
+sudo systemctl enable --now panfan.service
+sudo panfan status
+```
+
+## Install from source
 
 Do not run `panfan` alongside thermald or another program writing `TFN1`.
 
@@ -85,3 +112,18 @@ sudo panfan failsafe
 sudo systemctl unmask thermald.service
 sudo systemctl enable --now thermald.service
 ```
+
+Package removal stops the service before deleting the executable, allowing its
+`ExecStopPost` fail-safe to restore firmware-active control at maximum fan.
+
+## Releases
+
+Pushes and pull requests run source checks and build both package formats.
+Pushing a tag matching `v$(cat VERSION)` builds binary and source packages,
+checks them with `lintian` and `rpmlint`, generates checksums and provenance,
+and creates a GitHub release. Update `VERSION`, `debian/changelog`, and the RPM
+spec together before tagging; the workflow rejects mismatches.
+
+## License
+
+[MIT](LICENSE)

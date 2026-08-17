@@ -1,0 +1,131 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  debian:
+    name: Debian 13 release package
+    runs-on: ubuntu-24.04
+    container: debian:13
+    steps:
+      - name: Install packaging tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential debhelper git lintian systemd
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Validate tag
+        run: ./scripts/check-version.sh "$GITHUB_REF_NAME"
+
+      - name: Build binary and source packages
+        run: |
+          version=$(cat VERSION)
+          git archive --format=tar.gz --prefix="panfan-$version/" \
+              --output="../panfan_$version.orig.tar.gz" HEAD -- . ':(exclude)debian'
+          dpkg-buildpackage --no-sign
+
+      - name: Lint packages
+        run: lintian --fail-on error ../panfan_*.changes
+
+      - name: Collect packages
+        run: |
+          mkdir -p dist/debian
+          find .. -maxdepth 1 -type f -name 'panfan_*' -exec cp {} dist/debian/ \;
+
+      - name: Upload Debian packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: debian-release
+          path: dist/debian/
+          if-no-files-found: error
+
+  fedora:
+    name: Fedora 44 release package
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    steps:
+      - name: Install packaging tools
+        run: >-
+          dnf install -y --setopt=install_weak_deps=False
+          gcc git-core glibc-langpack-en gzip make rpm-build rpmlint systemd
+          systemd-rpm-macros tar
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Validate tag
+        run: ./scripts/check-version.sh "$GITHUB_REF_NAME"
+
+      - name: Build packages
+        run: |
+          version=$(cat VERSION)
+          mkdir -p "$HOME/rpmbuild/SOURCES"
+          git archive --format=tar.gz --prefix="panfan-$version/" \
+              --output="$HOME/rpmbuild/SOURCES/panfan-$version.tar.gz" HEAD
+          rpmbuild -ba packaging/rpm/panfan.spec
+
+      - name: Lint packages
+        run: |
+          rpmlint packaging/rpm/panfan.spec \
+              "$HOME"/rpmbuild/RPMS/x86_64/panfan-*.rpm \
+              "$HOME"/rpmbuild/SRPMS/panfan-*.src.rpm
+
+      - name: Collect packages
+        run: |
+          mkdir -p dist/fedora
+          cp "$HOME"/rpmbuild/RPMS/x86_64/panfan-*.rpm dist/fedora/
+          cp "$HOME"/rpmbuild/SRPMS/panfan-*.src.rpm dist/fedora/
+
+      - name: Upload Fedora packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fedora-release
+          path: dist/fedora/
+          if-no-files-found: error
+
+  publish:
+    name: Publish GitHub release
+    needs: [debian, fedora]
+    runs-on: ubuntu-24.04
+    permissions:
+      attestations: write
+      contents: write
+      id-token: write
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: '*-release'
+          path: release
+          merge-multiple: true
+
+      - name: Generate checksums
+        working-directory: release
+        run: sha256sum ./* > SHA256SUMS
+
+      - name: Attest packages
+        if: ${{ !github.event.repository.private }}
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: release/*
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+              --verify-tag \
+              --title "panfan $GITHUB_REF_NAME" \
+              --generate-notes

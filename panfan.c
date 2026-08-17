@@ -22,7 +22,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#define PANFAN_VERSION "0.1.0"
 #define ACPI_CALL "/proc/acpi/call"
 #define EC_PATH "\\_SB.PC00.LPCB.EC0"
 #define DEFAULT_CONFIG "/etc/panfan.conf"

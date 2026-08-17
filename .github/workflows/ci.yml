@@ -1,0 +1,157 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    name: Source checks
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+
+      - name: Check version metadata
+        run: ./scripts/check-version.sh
+
+      - name: Check formatting
+        run: make format-check
+
+      - name: Build with strict diagnostics
+        run: |
+          make clean
+          make CFLAGS='-O2 -std=c11 -Wall -Wextra -Wpedantic -Werror -fanalyzer'
+
+      - name: Run sanitizer checks
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1:abort_on_error=1:strict_string_checks=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          make sanitize
+          ./panfan-sanitize --version
+          ./panfan-sanitize policy
+          ./panfan-sanitize policy panfan.conf.example
+          invalid=$(mktemp)
+          trap 'rm -f "$invalid"' EXIT
+          printf 'start_temp_c=40\nstop_temp_c=45\n' > "$invalid"
+          if ./panfan-sanitize policy "$invalid"; then
+              echo 'invalid policy was accepted' >&2
+              exit 1
+          fi
+
+      - name: Verify systemd unit
+        run: |
+          sudo make install
+          systemd-analyze verify panfan.service
+
+  debian:
+    name: Debian 13 package
+    runs-on: ubuntu-24.04
+    container: debian:13
+    steps:
+      - name: Install packaging tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends build-essential debhelper git lintian systemd
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Build package
+        run: |
+          ./scripts/check-version.sh
+          dpkg-buildpackage --no-sign --build=binary
+
+      - name: Lint package
+        run: lintian --fail-on error ../panfan_*.changes
+
+      - name: Inspect and install package
+        run: |
+          package=$(find .. -maxdepth 1 -name 'panfan_*_amd64.deb' -print -quit)
+          test -n "$package"
+          dpkg-deb --info "$package"
+          dpkg-deb --contents "$package"
+          dpkg --force-depends --install "$package"
+          test "$(/usr/sbin/panfan --version)" = "panfan $(cat VERSION)"
+          /usr/sbin/panfan policy
+          test ! -e /etc/systemd/system/multi-user.target.wants/panfan.service
+          dpkg --remove panfan
+          test ! -e /usr/sbin/panfan
+
+      - name: Collect package
+        run: |
+          mkdir -p dist/debian
+          cp ../panfan_*.deb ../panfan_*.buildinfo ../panfan_*.changes dist/debian/
+
+      - name: Upload Debian package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: debian-package
+          path: dist/debian/
+          if-no-files-found: error
+          retention-days: 14
+
+  fedora:
+    name: Fedora 44 package
+    runs-on: ubuntu-24.04
+    container: fedora:44
+    steps:
+      - name: Install packaging tools
+        run: >-
+          dnf install -y --setopt=install_weak_deps=False
+          gcc git-core glibc-langpack-en gzip make rpm-build rpmlint systemd
+          systemd-rpm-macros tar
+
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Build packages
+        run: |
+          ./scripts/check-version.sh
+          version=$(cat VERSION)
+          mkdir -p "$HOME/rpmbuild/SOURCES"
+          git archive --format=tar.gz --prefix="panfan-$version/" \
+              --output="$HOME/rpmbuild/SOURCES/panfan-$version.tar.gz" HEAD
+          rpmbuild -ba packaging/rpm/panfan.spec
+
+      - name: Lint packages
+        run: |
+          rpmlint packaging/rpm/panfan.spec \
+              "$HOME"/rpmbuild/RPMS/x86_64/panfan-*.rpm \
+              "$HOME"/rpmbuild/SRPMS/panfan-*.src.rpm
+
+      - name: Inspect and install package
+        run: |
+          package=$(find "$HOME/rpmbuild/RPMS/x86_64" -name 'panfan-*.rpm' \
+              ! -name '*debug*' -print -quit)
+          test -n "$package"
+          rpm -qpi "$package"
+          rpm -qpl "$package"
+          rpm --nodeps --install "$package"
+          test "$(/usr/sbin/panfan --version)" = "panfan $(cat VERSION)"
+          /usr/sbin/panfan policy
+          test ! -e /etc/systemd/system/multi-user.target.wants/panfan.service
+          rpm --erase panfan
+          test ! -e /usr/sbin/panfan
+
+      - name: Collect packages
+        run: |
+          mkdir -p dist/fedora
+          cp "$HOME"/rpmbuild/RPMS/x86_64/panfan-*.rpm dist/fedora/
+          cp "$HOME"/rpmbuild/SRPMS/panfan-*.src.rpm dist/fedora/
+
+      - name: Upload Fedora packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: fedora-packages
+          path: dist/fedora/
+          if-no-files-found: error
+          retention-days: 14

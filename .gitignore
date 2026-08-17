@@ -1,3 +1,4 @@
 /panfan
 /panfan-sanitize
+/dist/
 *.o

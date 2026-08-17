@@ -1,0 +1,67 @@
+.TH PANFAN 8 "August 2026" "panfan" "System Administration"
+.SH NAME
+panfan \- fan controller for Panasonic CF-SC laptops
+.SH SYNOPSIS
+.B panfan
+.I command
+.RI [ argument ]
+.SH DESCRIPTION
+.B panfan
+hands fan ownership to Linux through Panasonic ACPI methods and controls the
+TFN1 cooling device from CPU package temperature. It accepts Panasonic systems
+whose DMI product name is CFSC-2 and verifies the expected thermal interfaces
+before changing fan ownership.
+.SH COMMANDS
+.TP
+.BR run " [" config "]"
+Run the controller with the built-in or specified policy.
+.TP
+.B status
+Show fan ownership, cooling state, and CPU temperature.
+.TP
+.BR check " [" config "]"
+Validate the hardware and effective policy.
+.TP
+.BR policy " [" config "]"
+Print the effective policy without accessing hardware.
+.TP
+.B passive
+Enter OS-controlled fan mode.
+.TP
+.B failsafe
+Set maximum fan and restore firmware-active control.
+.TP
+.BR pre " " action
+Run the system-sleep pre-hook.
+.TP
+.BR post " " action
+Run the system-sleep post-hook.
+.SH CONFIGURATION
+If
+.I /etc/panfan.conf
+does not exist, the built-in policy is used. A configuration file may override
+any of these keys:
+.BR poll_interval_ms ,
+.BR start_temp_c ,
+.BR stop_temp_c ,
+.BR emergency_temp_c ,
+.BR min_state ,
+.BR max_state ,
+.BR step_up ,
+and
+.BR step_down .
+.SH FILES
+.TP
+.I /etc/panfan.conf
+Optional policy overrides.
+.TP
+.I /proc/acpi/call
+Interface provided by the acpi_call kernel module.
+.TP
+.I /run/panfan
+Runtime ownership and sleep markers.
+.SH SAFETY
+Do not run panfan alongside thermald or another controller writing TFN1.
+Normal daemon shutdown restores firmware-active control at maximum fan.
+.SH AUTHOR
+Toby
