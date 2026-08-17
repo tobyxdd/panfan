@@ -116,6 +116,7 @@ jobs:
       - name: Build packages
         run: |
           ./scripts/check-version.sh
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           version=$(cat VERSION)
           mkdir -p "$HOME/rpmbuild/SOURCES"
           git archive --format=tar.gz --prefix="panfan-$version/" \

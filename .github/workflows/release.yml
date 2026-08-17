@@ -31,6 +31,7 @@ jobs:
 
       - name: Build binary and source packages
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           version=$(cat VERSION)
           git archive --format=tar.gz --prefix="panfan-$version/" \
               --output="../panfan_$version.orig.tar.gz" HEAD -- . ':(exclude)debian'
@@ -70,6 +71,7 @@ jobs:
 
       - name: Build packages
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           version=$(cat VERSION)
           mkdir -p "$HOME/rpmbuild/SOURCES"
           git archive --format=tar.gz --prefix="panfan-$version/" \
