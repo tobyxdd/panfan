@@ -1,0 +1,9 @@
+# Built-in defaults. Copy this file to /etc/panfan.conf to override them.
+poll_interval_ms=1000
+start_temp_c=45
+stop_temp_c=42
+emergency_temp_c=80
+min_state=15
+max_state=50
+step_up=5
+step_down=5

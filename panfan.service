@@ -1,0 +1,42 @@
+[Unit]
+Description=Panasonic CF-SC fan controller
+After=systemd-modules-load.service thermald.service
+Conflicts=thermald.service
+StartLimitIntervalSec=30
+StartLimitBurst=3
+
+[Service]
+Type=notify
+ExecStart=/usr/sbin/panfan run
+ExecStopPost=/usr/sbin/panfan failsafe
+Restart=on-failure
+RestartSec=1
+WatchdogSec=5
+LimitCORE=0
+TimeoutStartSec=10
+TimeoutStopSec=5
+RuntimeDirectory=panfan
+RuntimeDirectoryMode=0755
+UMask=0077
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+PrivateDevices=yes
+PrivateNetwork=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectClock=yes
+ProtectControlGroups=yes
+ProtectHostname=yes
+ProtectKernelLogs=yes
+ProtectKernelModules=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+
+[Install]
+WantedBy=multi-user.target
